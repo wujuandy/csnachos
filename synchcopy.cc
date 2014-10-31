@@ -135,16 +135,25 @@ void Lock::Acquire()
 {
 	//interrupt off
 	IntStatus oldLevel = interrupt->SetLevel(IntOff);
+
+	//Check to see if thread exists
+	ASSERT( holder == NULL );
+
 	if( old )
 	{
 		//Check if new thread has already had the lock
 		ASSERT( holder != currentThread ) 
-		queue->Append(currentThread);
+		//Accomodate for join threads
+		queue->SortedInsert( currentThread,
+				     0-currentThread->getPriority() );
+		//Pass priority to the new thread holding lock
+		if( currentThread->getPriority() > holder->getPriority() )
+		{
+			holder->passPriority( currentThread->getPriority() );
+		}
 		currentThread->Sleep();
 	}
 
-	//Check to see if thread exists
-	ASSERT( holder == NULL );
 	old = true;
 	holder = currentThread;
 
@@ -160,6 +169,7 @@ void Lock::Release()
 
 	Thread *thread;
 	ASSERT( old || holder ); //Make sure the thread has the lock
+	
 
 	//Check if queue is empty, shouldn't be when trying to remove a thread
 	if( queue->IsEmpty() ) {}
@@ -173,16 +183,70 @@ void Lock::Release()
 	holder = NULL;
 	old = false;
 	
-	//INterrupt on
+	//interrupt on
 	(void) interrupt->SetLevel(oldLevel);
+
 }
 
+bool Lock::isHeldByCurrentThread()
+{
+	//Interrupt off
+	IntStatus oldLevel = interrupt->SetLevel(IntOff);
+
+	bool check;
+	check = ((old == true) && (holder == currentThread));
+
+	//interrupt on
+	(void) interrupt->SetLevel(oldLevel);
+	
+	return check;
+}
+
+Condition::Condition(char* debugName)
+{
+	name = debugName;
+	queue = new List;
+}
+Condition::~Condition()
+{
+	delete queue;
+}
+void Condition::Wait(Lock* conditionLock) 
+{
+	ASSERT( conditionLock->isHeldByCurrentThread() );
+	conditionLock->Release();
+	IntStatus oldLevel = interrupt->SetLevel(IntOff);
+	// while(condition?) {
+	queue->Append( (void *) currentThread );
+	currentThread->Sleep();
+	//}
+	(void) interrupt->SetLevel(oldLevel);
+	conditionLock->Acquire();
+}
+void Condition::Signal(Lock* conditionLock)
+{
+	ASSERT( conditionLock->isHeldByCurrentThread() );
+
+	Thread * thread;
+	thread = (Thread*) queue->Remove();
+	if(thread != NULL)
+	scheduler->ReadyToRun(thread);
+}
+void Condition::Broadcast(Lock* conditionLock)
+{
+	ASSERT( conditionLock->isHeldByCurrentThread() );
+	Thread * thread;
+	thread = (Thread*) queue->Remove();
+	if ( thread != NULL);
+	scheduler->ReadyToRun(thread);
+}
+/*
 Condition::Condition(char* debugName) { }
 Condition::~Condition() { }
 void Condition::Wait(Lock* conditionLock) {
     ASSERT(FALSE);
 }
 void Condition::Signal(Lock* conditionLock) { }
-void Condition::Broadcast(Lock* conditionLock) { }
+void Condition::Broadcast(Lock* conditionLock) { }*/
 
 

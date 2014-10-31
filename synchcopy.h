@@ -145,6 +145,7 @@ private:
     char* name;
     // plus some other stuff you'll need to define
     Lock* lock; 			// used for exclusion
+    List* queue;
 };
 #endif // SYNCH_H
 
